@@ -1,0 +1,6 @@
+x = 0
+
+checkpoint one
+
+x = x + 1
+?(x < 10) >>> one
