@@ -1,7 +1,6 @@
 from typing import NamedTuple
 # TOKENS
 
-DIVIDE          = 'DIVIDE'
 GO_TO           = 'GO_TO'
 GREATER_THAN    = 'GREATER_THAN'
 LESSER_THAN     = 'LESSER_THAN'
@@ -14,11 +13,15 @@ MULTIPLY        = 'MULTIPLY'
 IF              = 'IF'
 EOF             = 'EOF'
 COMMA           = 'COMMA'
-INT             = 'INT'
-WORD            = 'WORD'
+KEYWORD         = 'KEYWORD'
+NAME            = 'NAME'
+NUMBER          = 'NUMBER'
 
-#Keywords:
-# 'checkpoint'
+KEYWORDS = [
+    'int',
+    'function',
+    'checkpoint'
+]
 
 
 class Token(NamedTuple):

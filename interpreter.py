@@ -11,7 +11,7 @@ def return_numbers(text: str, index: int) -> str:
 
 
 def return_chars(text: str, index: int) -> str:
-    if not index == len(text) and text[index].isalpha():
+    if not index == len(text) and (text[index] != ' ' and text[index] != '\n'):
         return text[index] + return_chars(text, index+1)
     return ''
 
@@ -23,11 +23,13 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
         tmp_token = codeText[index]
         if tmp_token.isdigit():
             number = tmp_token + return_numbers(codeText, index+1)
-            return getTokens(codeText, index + len(number), lineNumber, result + [Token(INT, number)])
+            return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
 
         elif tmp_token.isalpha():
-            keyword = tmp_token + return_chars(codeText, index+1)
-            return getTokens(codeText, index + len(keyword), lineNumber, result + [Token(WORD, keyword)])
+            word = tmp_token + return_chars(codeText, index+1)
+            if word in KEYWORDS:
+                return getTokens(codeText, index + len(word), lineNumber, result + [Token(KEYWORD, word)])
+            return getTokens(codeText, index + len(word), lineNumber, result + [Token(NAME, word)])
 
         elif tmp_token == ' ' or tmp_token == '\n':
             if tmp_token == '\n':
@@ -43,9 +45,6 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
         elif tmp_token == '<':
             return getTokens(codeText, index + 1, lineNumber, result + [Token(LESSER_THAN, tmp_token)])
 
-        elif tmp_token == '/':
-            return getTokens(codeText, index + 1, lineNumber, result + [Token(DIVIDE, tmp_token)])
-
         elif tmp_token == '(':
             return getTokens(codeText, index + 1, lineNumber, result + [Token(OPEN_BRACKET, tmp_token)])
 
@@ -56,9 +55,12 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
             return getTokens(codeText, index + 1, lineNumber, result + [Token(EQUAL, tmp_token)])
 
         elif tmp_token == '-':
-            if result[-1].type in [MINUS, PLUS, DIVIDE, MULTIPLY]:
+            if len(result) == 0:
                 number = tmp_token + return_numbers(codeText, index + 1)
-                return getTokens(codeText, index + len(number), lineNumber, result + [Token(INT, number)])
+                return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
+            elif result[-1].type in [MINUS, PLUS, MULTIPLY, OPEN_BRACKET]:
+                number = tmp_token + return_numbers(codeText, index + 1)
+                return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
 
             return getTokens(codeText, index + 1, lineNumber, result + [Token(MINUS, tmp_token)])
 
@@ -84,17 +86,17 @@ class TokenNode(NamedTuple):
     tok: Token
 
 
-class DubbelOpNode(NamedTuple):
+class OpNode(NamedTuple):
     left_node: 'Node'
     operator: Token
     right_node: 'Node'
 
 
-Node = Union[TokenNode, DubbelOpNode]
+Node = Union[TokenNode, OpNode]
 
 
 def factor(tokens: list, index: int) -> Tuple[Node, int]:
-    if tokens[index].type == INT:
+    if tokens[index].type == NUMBER:
         return TokenNode(tokens[index]), index + 1
 
     elif tokens[index].type == OPEN_BRACKET:
@@ -108,7 +110,7 @@ def factor(tokens: list, index: int) -> Tuple[Node, int]:
 
 
 def term(tokens: list, index: int) -> Tuple[Node, int]:
-    return operation(factor, [MULTIPLY, DIVIDE], tokens, index)
+    return operation(factor, MULTIPLY, tokens, index)
 
 
 def expression(tokens: list, index: int) -> Tuple[Node, int]:
@@ -124,7 +126,7 @@ def operationSearch(func: Callable, operators: list, tokens: list, index: int, l
     operator_token = tokens[index]
     right_node, new_index = func(tokens, index+1)
 
-    return operationSearch(func, operators, tokens, new_index, DubbelOpNode(left_node, operator_token, right_node))
+    return operationSearch(func, operators, tokens, new_index, OpNode(left_node, operator_token, right_node))
 
 
 def operation(func: Callable, operators: list, tokens: list, index: int) -> Tuple[Node, int]:
@@ -136,3 +138,32 @@ def operation(func: Callable, operators: list, tokens: list, index: int) -> Tupl
 def parseTokens(tokens: list, index: int) -> Node:
     result, unused_index = expression(tokens, index)
     return result
+
+# =============== INTERPRETER =====================
+
+
+class TreeInterpreter:
+    def no_visit_method(self, node: Node):
+        raise Exception(f'visit_{type(node).__name__} method is unknown')
+
+    def visit(self, node: Node) -> int:
+        method_name = f'visit_{type(node).__name__}'
+        method = getattr(self, method_name, self.no_visit_method)
+        return method(node)
+
+    def visit_TokenNode(self, tokenNode: Node) -> int:
+        return int(tokenNode.tok.value)
+
+    def visit_OpNode(self, opNode: Node) -> int:
+        left = self.visit(opNode.left_node)
+        right = self.visit(opNode.right_node)
+
+        if opNode.operator.type == PLUS:
+            if isinstance(right, int):
+                return left + right
+        elif opNode.operator.type == MINUS:
+            if isinstance(right, int):
+                return left - right
+        elif opNode.operator.type == MULTIPLY:
+            if isinstance(right, int):
+                return left * right
