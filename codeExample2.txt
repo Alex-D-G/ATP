@@ -1,1 +1,2 @@
-int kap_09
+var a = 5
+print(a)

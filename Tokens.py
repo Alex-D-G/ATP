@@ -18,9 +18,10 @@ NAME            = 'NAME'
 NUMBER          = 'NUMBER'
 
 KEYWORDS = [
-    'int',
+    'var',
     'function',
-    'checkpoint'
+    'checkpoint',
+    'print'
 ]
 
 

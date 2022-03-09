@@ -11,7 +11,7 @@ def return_numbers(text: str, index: int) -> str:
 
 
 def return_chars(text: str, index: int) -> str:
-    if not index == len(text) and (text[index] != ' ' and text[index] != '\n'):
+    if not index == len(text) and (text[index].isdigit() or text[index].isalpha()):
         return text[index] + return_chars(text, index+1)
     return ''
 
@@ -80,10 +80,19 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
             raise Exception("Unrecognized character \'" + tmp_token + "\' at line " + str(lineNumber))
 
 
-# =============== PARSER =====================
+# =============== PARSER nodes =====================
 
 class TokenNode(NamedTuple):
     tok: Token
+
+
+class VarNode(NamedTuple):
+    name: Token
+    value: 'Node'
+
+
+class PrintNode(NamedTuple):
+    value: 'Node'
 
 
 class OpNode(NamedTuple):
@@ -92,15 +101,55 @@ class OpNode(NamedTuple):
     right_node: 'Node'
 
 
-Node = Union[TokenNode, OpNode]
+Node = Union[TokenNode, OpNode, VarNode, PrintNode]
+
+# =============== PARSER =====================
 
 
-def factor(tokens: list, index: int) -> Tuple[Node, int]:
-    if tokens[index].type == NUMBER:
+def getVariableNames(varList: list, index: int, results: list) -> list:
+    if index == len(varList):
+        return results
+    return getVariableNames(varList, index+1, results + [varList[index].name])
+
+
+def factor(tokens: list, index: int, varList: list) -> Tuple[Node, int]:
+    if index == len(tokens):
+        raise Exception("Syntax Error")
+
+    elif tokens[index].type == NAME:
+        varNames = getVariableNames(varList, 0, [])
+        if tokens[index].value in varNames:
+            return TokenNode(tokens[index]), index + 1
+
+    elif tokens[index].type == KEYWORD and tokens[index].value == 'var':
+        if index+1 == len(tokens):
+            raise Exception("Expected Variable Name")
+        elif tokens[index+1].type != NAME:
+            raise Exception("Expected Variable Name")
+        variable_name = tokens[index+1]
+
+        if index + 2 == len(tokens):
+            raise Exception("Expected '='")
+        elif tokens[index+2].type != EQUAL:
+            raise Exception("Expected '='")
+
+        New_node, new_index = expression(tokens, index + 3, varList)
+
+        return VarNode(variable_name, New_node), new_index
+
+    elif tokens[index].type == KEYWORD and tokens[index].value == 'print':
+        if tokens[index+1].type == OPEN_BRACKET:
+            New_node, new_index = expression(tokens, index + 2, varList)
+            if tokens[new_index].type != CLOSE_BRACKET:
+                raise Exception("Expected ')'")
+            return PrintNode(New_node), new_index + 1
+        raise Exception("Expected '('")
+
+    elif tokens[index].type == NUMBER:
         return TokenNode(tokens[index]), index + 1
 
     elif tokens[index].type == OPEN_BRACKET:
-        New_node, new_index = expression(tokens, index + 1)
+        New_node, new_index = expression(tokens, index + 1, varList)
         if tokens[new_index].type != CLOSE_BRACKET:
             raise Exception("Expected )")
         return New_node, new_index + 1
@@ -109,61 +158,108 @@ def factor(tokens: list, index: int) -> Tuple[Node, int]:
         raise Exception("Expected Int")
 
 
-def term(tokens: list, index: int) -> Tuple[Node, int]:
-    return operation(factor, MULTIPLY, tokens, index)
+def term(tokens: list, index: int, varList: list) -> Tuple[Node, int]:
+    return operation(factor, MULTIPLY, tokens, index, varList)
 
 
-def expression(tokens: list, index: int) -> Tuple[Node, int]:
-    return operation(term, [PLUS, MINUS], tokens, index)
+def expression(tokens: list, index: int, varList: list) -> Tuple[Node, int]:
+
+    return operation(term, [PLUS, MINUS], tokens, index, varList)
 
 
-def operationSearch(func: Callable, operators: list, tokens: list, index: int, left_node: Node) -> Tuple[Node, int]:
+def operationSearch(func: Callable, operators: list, tokens: list, index: int, left_node: Node, varList: list) -> Tuple[Node, int]:
     if len(tokens) <= index:
         return left_node, index
     elif tokens[index].type not in operators:
         return left_node, index
 
     operator_token = tokens[index]
-    right_node, new_index = func(tokens, index+1)
+    right_node, new_index = func(tokens, index+1, varList)
 
-    return operationSearch(func, operators, tokens, new_index, OpNode(left_node, operator_token, right_node))
-
-
-def operation(func: Callable, operators: list, tokens: list, index: int) -> Tuple[Node, int]:
-    left, new_index = func(tokens, index)
-
-    return operationSearch(func, operators, tokens, new_index, left)
+    return operationSearch(func, operators, tokens, new_index, OpNode(left_node, operator_token, right_node), varList)
 
 
-def parseTokens(tokens: list, index: int) -> Node:
-    result, unused_index = expression(tokens, index)
+def operation(func: Callable, operators: list, tokens: list, index: int, varList: list) -> Tuple[Node, int]:
+    left, new_index = func(tokens, index, varList)
+
+    return operationSearch(func, operators, tokens, new_index, left, varList)
+
+
+def parseTokens(tokens: list, index: int, varList: list) -> Node:
+    result, unused_index = expression(tokens, index, varList)
     return result
+
+# ========= INTERPRETER return types ==============
+
+
+class VarReturn(NamedTuple):
+    name: str
+    value: int
+
+
+class IntReturn(NamedTuple):
+    value: int
+
+
+ReturnType = Union[IntReturn, VarReturn]
 
 # =============== INTERPRETER =====================
 
 
 class TreeInterpreter:
-    def no_visit_method(self, node: Node):
+    def no_visit_method(self, node: Node, varList: list):
         raise Exception(f'visit_{type(node).__name__} method is unknown')
 
-    def visit(self, node: Node) -> int:
+    def visit(self, node: Node, varList: list) -> int:
         method_name = f'visit_{type(node).__name__}'
         method = getattr(self, method_name, self.no_visit_method)
-        return method(node)
+        return method(node, varList)
 
-    def visit_TokenNode(self, tokenNode: Node) -> int:
+    def visit_PrintNode(self, printNode: Node, varList: list):
+        value = self.visit(printNode.value, varList)
+        print(value)
+
+    def visit_VarNode(self, varNode: Node, varList: list):
+        value = self.visit(varNode.value, varList)
+        return VarReturn(varNode.name.value, value)
+
+    def visit_TokenNode(self, tokenNode: Node, varList: list) -> int:
+        if tokenNode.tok.type == NAME:
+            varNames = getVariableNames(varList, 0, [])
+            if tokenNode.tok.value in varNames:
+                return varList[varNames.index(tokenNode.tok.value)].value
         return int(tokenNode.tok.value)
 
-    def visit_OpNode(self, opNode: Node) -> int:
-        left = self.visit(opNode.left_node)
-        right = self.visit(opNode.right_node)
+    def visit_OpNode(self, opNode: Node, varList: list) -> int:
+        left = self.visit(opNode.left_node, varList)
+        right = self.visit(opNode.right_node, varList)
 
         if opNode.operator.type == PLUS:
-            if isinstance(right, int):
-                return left + right
+            return left + right
         elif opNode.operator.type == MINUS:
-            if isinstance(right, int):
-                return left - right
+            return left - right
         elif opNode.operator.type == MULTIPLY:
-            if isinstance(right, int):
-                return left * right
+            return left * right
+
+# =============== CONTROLLER =====================
+
+
+def run_code(codeList: list, index: int, varList: list) -> int:
+
+    # Lexer
+    tokens = getTokens(codeList[index], 0, 1, [])
+    #print(tokens, '\n-------')
+
+    # Parser
+    token_tree = parseTokens(tokens, 0, varList)
+    #print(token_tree, '\n-------')
+
+    # Interpreter
+    inter = TreeInterpreter()
+    inter_result = inter.visit(token_tree, varList)
+    if len(codeList) == index+1:
+        return inter_result
+    elif type(inter_result) == VarReturn:
+        return run_code(codeList, index + 1, varList + [inter_result])
+    return run_code(codeList, index+1, varList)
+
