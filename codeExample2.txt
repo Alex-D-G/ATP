@@ -1,2 +1,14 @@
-var a = 5
-print(a)
+
+func telOp(x){
+    checkpoint one
+
+    ?(x > 5){
+        x = x+5
+    }
+
+    return x + 5
+}
+
+var a = 10
+
+print(telOp(a))

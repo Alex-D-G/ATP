@@ -1,6 +1,11 @@
-x = 0
+func telOp(x){
+    checkpoint one
 
-checkpoint one
+    x = x + 1
+    ?(x < 10) >>> one
+    return x
+}
 
-x = x + 1
-?(x < 10) >>> one
+var a = telOp(10)
+
+print(a)
