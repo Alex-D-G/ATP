@@ -97,12 +97,19 @@ def getListNames(varList: list, index: int, results: list) -> list:
     return getListNames(varList, index+1, results + [varList[index].name])
 
 
-def removeVariableFromList(varList: list, varName: str, index: int, newVarList: list) -> list:
+def removeTargetFromList(varList: list, varName: str, index: int, newVarList: list) -> list:
     if index == len(varList):
         return newVarList
     if varList[index].name == varName:
-        return removeVariableFromList(varList, varName, index+1, newVarList)
-    return removeVariableFromList(varList, varName, index + 1, newVarList + [varList[index]])
+        return removeTargetFromList(varList, varName, index+1, newVarList)
+    return removeTargetFromList(varList, varName, index + 1, newVarList + [varList[index]])
+
+
+def removeTargetListFromList(targetList: list, varList: list, index: int) -> list:
+    if index == len(targetList):
+        return varList
+    newList = removeTargetFromList(varList, targetList[index], 0, [])
+    return removeTargetListFromList(targetList, newList, index+1)
 
 
 def getVarsFromTokens(tokens: list, index: int, varList: list) -> list:
@@ -119,8 +126,15 @@ def getVarsFromTokens(tokens: list, index: int, varList: list) -> list:
     raise Exception("Syntax Error")
 
 
-def findEndOfContext(codeList: list, index: int, lineNumber: int, amountOpen: int, amountClosed: int) -> int:
+def getNodesFromTokens(tokens: list, index: int, varList: list, funcList: list, result: list) -> Tuple[list, int]:
+    if tokens[index-1].type == CLOSE_BRACKET:
+        return result, index
 
+    new_node, new_index = expression(tokens, index, varList, funcList)
+    return getNodesFromTokens(tokens, new_index+1, varList, funcList, result + [new_node])
+
+
+def findEndOfContext(codeList: list, index: int, lineNumber: int, amountOpen: int, amountClosed: int) -> int:
     if amountOpen == amountClosed:
         return lineNumber
     elif lineNumber == len(codeList):
@@ -173,12 +187,22 @@ class OpNode(NamedTuple):
     right_node: 'Node'
 
 
-Node = Union[TokenNode, OpNode, VarNode, PrintNode, FuncCreateNode, FuncCallNode, ReturnNode, IfNode]
+class CheckpointNode(NamedTuple):
+    name: Token
+
+
+class GoToNode(NamedTuple):
+    name: Token
+
+
+Node = Union[TokenNode, OpNode, VarNode, PrintNode, FuncCreateNode,
+             FuncCallNode, ReturnNode, IfNode, CheckpointNode, GoToNode]
 
 
 # =============== PARSER =====================
 
 def factor(tokens: list, index: int, varList: list, funcList: list) -> Tuple[Node, int]:
+
     if index == len(tokens):
         raise Exception("Syntax Error")
 
@@ -200,8 +224,8 @@ def factor(tokens: list, index: int, varList: list, funcList: list) -> Tuple[Nod
         funcNames = getListNames(funcList, 0, [])
         if tokens[index].value in funcNames:   # Func call
             if tokens[index + 1].type == OPEN_BRACKET:
-                new_vars = getVarsFromTokens(tokens, index + 2, [])
-                return FuncCallNode(tokens[index].value, new_vars[0]), new_vars[1]+1
+                Node_list, new_index = getNodesFromTokens(tokens, index+2, varList, funcList, [])
+                return FuncCallNode(tokens[index].value, Node_list), new_index
 
         raise Exception(tokens[index].value, " is unknown within this context")
 
@@ -238,6 +262,14 @@ def factor(tokens: list, index: int, varList: list, funcList: list) -> Tuple[Nod
     elif tokens[index].type == KEYWORD and tokens[index].value == 'return':
         New_node, new_index = expression(tokens, index + 1, varList, funcList)
         return ReturnNode(New_node), new_index
+
+    elif tokens[index].type == KEYWORD and tokens[index].value == 'checkpoint':
+        if tokens[index+1].type == NAME:
+            return CheckpointNode(tokens[index+1].value), index+2
+
+    elif tokens[index].type == GO_TO:
+        if tokens[index + 1].type == NAME:
+            return GoToNode(tokens[index + 1].value), index + 2
 
     elif tokens[index].type == NUMBER:
         return TokenNode(tokens[index]), index + 1
@@ -311,64 +343,88 @@ class IfReturn(NamedTuple):
     value: bool
 
 
-ReturnType = Union[IntReturn, VarReturn, FuncReturn, ReturnReturn, IfReturn]
+class CheckpointReturn(NamedTuple):
+    value: Token
+
+
+class GoToReturn(NamedTuple):
+    value: int
+
+
+ReturnType = Union[IntReturn, VarReturn, FuncReturn, ReturnReturn, IfReturn, CheckpointReturn, GoToReturn]
 
 # =============== INTERPRETER =====================
 
 
 class TreeInterpreter:
-    def no_visit_method(self, node: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
+    def visit_list(self, toVisitList: list, index: int, result: list, varList: list, funcList: list, checkpointList: list, codeList: list) -> list:
+        if len(toVisitList) == index:
+            return result
+        value = self.visit(toVisitList[index], varList, funcList, checkpointList, codeList)
+        return self.visit_list(toVisitList, index + 1, result + [value.value], varList, funcList, checkpointList, codeList)
+
+    def no_visit_method(self, node: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         raise Exception(f'visit_{type(node).__name__} method is unknown')
 
-    def visit(self, node: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
+    def visit(self, node: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         method_name = f'visit_{type(node).__name__}'
         method = getattr(self, method_name, self.no_visit_method)
-        return method(node, varList, funcList, codeList)
+        return method(node, varList, funcList, checkpointList, codeList)
 
-    def visit_FuncCreateNode(self, funcNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
+    def visit_FuncCreateNode(self, funcNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         return FuncReturn(funcNode.name, funcNode.varList)
 
-    def visit_FuncCallNode(self, funcNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
+    # @staticmethod
+    def visit_FuncCallNode(self, funcNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         funcNames = getListNames(funcList, 0, [])
         if funcNode.name in funcNames:
 
             target_func = funcList[funcNames.index(funcNode.name)]
             if len(funcNode.varList) == len(target_func.varList):
-                funcVarList = assignFunctionVariables(varList, target_func.varList, funcNode.varList, 0, [])
+                new_vars = self.visit_list(funcNode.varList, 0, [], varList, funcList, checkpointList, codeList)
+                funcVarList = assignFunctionVariables(varList, target_func.varList, new_vars, 0, [])
 
-                value, newVars = run_code(codeList, target_func.start + 1, varList + funcVarList, funcList, target_func.end)
+                newVarList = removeTargetListFromList(varList, funcVarList, 0)
+                value, newVars = run_code(codeList, target_func.start + 1, newVarList, funcList, checkpointList, target_func.end)
 
                 return IntReturn(value)
             raise Exception("Incorrect variable amount")
 
-    def visit_PrintNode(self, printNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
-        value = self.visit(printNode.value, varList, funcList, codeList)
+    def visit_PrintNode(self, printNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        value = self.visit(printNode.value, varList, funcList, checkpointList, codeList)
         print(value.value)
         return IntReturn(0)
 
-    def visit_IfNode(self, ifNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
-        value = self.visit(ifNode.value, varList, funcList, codeList)
+    def visit_CheckpointNode(self, checkpointNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        return CheckpointReturn(checkpointNode.name)
 
+    def visit_GoToNode(self, goToNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        checkpointNames = getListNames(checkpointList, 0, [])
+        if goToNode.name in checkpointNames:
+            return GoToReturn(checkpointList[checkpointNames.index(goToNode.name)].line)
+
+    def visit_IfNode(self, ifNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        value = self.visit(ifNode.value, varList, funcList, checkpointList, codeList)
         return IfReturn(value.value)
 
-    def visit_ReturnNode(self, printNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
-        value = self.visit(printNode.value, varList, funcList, codeList)
+    def visit_ReturnNode(self, printNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        value = self.visit(printNode.value, varList, funcList, checkpointList, codeList)
         return ReturnReturn(value.value)
 
-    def visit_VarNode(self, varNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
-        value = self.visit(varNode.value, varList, funcList, codeList)
+    def visit_VarNode(self, varNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        value = self.visit(varNode.value, varList, funcList, checkpointList, codeList)
         return VarReturn(varNode.name.value, value.value)
 
-    def visit_TokenNode(self, tokenNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
+    def visit_TokenNode(self, tokenNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         if tokenNode.tok.type == NAME:
             varNames = getListNames(varList, 0, [])
             if tokenNode.tok.value in varNames:
                 return IntReturn(varList[varNames.index(tokenNode.tok.value)].value)
         return IntReturn(int(tokenNode.tok.value))
 
-    def visit_OpNode(self, opNode: Node, varList: list, funcList: list, codeList: list) -> ReturnType:
-        left = self.visit(opNode.left_node, varList, funcList, codeList)
-        right = self.visit(opNode.right_node, varList, funcList, codeList)
+    def visit_OpNode(self, opNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
+        left = self.visit(opNode.left_node, varList, funcList, checkpointList, codeList)
+        right = self.visit(opNode.right_node, varList, funcList, checkpointList, codeList)
 
         if opNode.operator.type == PLUS:
             return IntReturn(left.value + right.value)
@@ -413,11 +469,16 @@ class FuncContext(NamedTuple):
     end: int
 
 
-def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, endOfContext: int) -> Tuple[int, list]:
+class Checkpoint(NamedTuple):
+    name: Token
+    line: int
+
+
+def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, checkpointList: list, endOfContext: int) -> Tuple[int, list]:
     if len(codeList) == lineNumber:
         return 1, varList  # Temporary
     elif codeList[lineNumber] == '\n':
-        return run_code(codeList, lineNumber + 1, varList, funcList, endOfContext)
+        return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext)
     elif endOfContext:
         if endOfContext-1 == lineNumber:
             return 0, varList
@@ -432,30 +493,44 @@ def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, end
 
     # Interpreter
     inter = TreeInterpreter()
-    inter_result = inter.visit(token_tree, varList, funcList, codeList)
+    inter_result = inter.visit(token_tree, varList, funcList, checkpointList, codeList)
 
     if type(inter_result) == FuncReturn:
         contextEnd = findEndOfContext(codeList, 0, lineNumber+1, 1, 0)
         new_func = FuncContext(inter_result.name, inter_result.varList, lineNumber, contextEnd)
-        return run_code(codeList, contextEnd, varList, funcList + [new_func], endOfContext)
+        return run_code(codeList, contextEnd, varList, funcList + [new_func], checkpointList, endOfContext)
 
     elif type(inter_result) == VarReturn:
         varNames = getListNames(varList, 0, [])
         if inter_result.name in varNames:
-            new_varList = removeVariableFromList(varList, inter_result.name, 0, [])
-            return run_code(codeList, lineNumber + 1, new_varList + [inter_result], funcList, endOfContext)
+            new_varList = removeTargetFromList(varList, inter_result.name, 0, [])
+            return run_code(codeList, lineNumber + 1, new_varList + [inter_result], funcList, checkpointList, endOfContext)
 
-        return run_code(codeList, lineNumber + 1, varList + [inter_result], funcList, endOfContext)
+        return run_code(codeList, lineNumber + 1, varList + [inter_result], funcList, checkpointList, endOfContext)
 
     elif type(inter_result) == IfReturn:
         contextEnd = findEndOfContext(codeList, 0, lineNumber + 1, 1, 0)
         if inter_result.value:
-            value, newVars = run_code(codeList, lineNumber + 1, varList, funcList, contextEnd)
+            value, newVars = run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, contextEnd)
+            if value > 0:
+                return value, varList
+            return run_code(codeList, contextEnd, removeUniqueVars(varList, newVars, 0, []), funcList, checkpointList, endOfContext)
+        return run_code(codeList, contextEnd, varList, funcList, checkpointList, endOfContext)
 
-            return run_code(codeList, contextEnd + 1, removeUniqueVars(varList, newVars, 0, []), funcList, 0)
-        return run_code(codeList, contextEnd + 1, varList, funcList, 0)
+    elif type(inter_result) == CheckpointReturn:
+        checkpointNames = getListNames(checkpointList, 0, [])
+        if inter_result.value in checkpointNames:
+            newCheckpointList = removeTargetFromList(checkpointList, str(inter_result.value), 0, [])
+            newCheckpoint = Checkpoint(inter_result.value, lineNumber)
+            return run_code(codeList, lineNumber + 1, varList, funcList, newCheckpointList + [newCheckpoint], endOfContext)
+
+        newCheckpoint = Checkpoint(inter_result.value, lineNumber)
+        return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList + [newCheckpoint], endOfContext)
+
+    elif type(inter_result) == GoToReturn:
+        return run_code(codeList, inter_result.value + 1, varList, funcList, checkpointList, endOfContext)
 
     elif type(inter_result) == ReturnReturn:
         return inter_result.value, varList
 
-    return run_code(codeList, lineNumber+1, varList, funcList, endOfContext)
+    return run_code(codeList, lineNumber+1, varList, funcList, checkpointList, endOfContext)

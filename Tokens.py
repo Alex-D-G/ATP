@@ -1,6 +1,6 @@
 from typing import NamedTuple
-# TOKENS
 
+# TOKENS
 GO_TO               = 'GO_TO'
 LESSER_THAN         = 'LESSER_THAN'
 GREATER_THAN        = 'GREATER_THAN'
@@ -22,7 +22,7 @@ KEYWORD             = 'KEYWORD'
 NAME                = 'NAME'
 NUMBER              = 'NUMBER'
 
-KEYWORDS = [
+KEYWORDS = [  # Keywords that the language supports
     'var',
     'func',
     'checkpoint',

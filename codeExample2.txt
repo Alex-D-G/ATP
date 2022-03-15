@@ -1,14 +1,11 @@
-
-func telOp(x){
-    checkpoint one
-
-    ?(x > 5){
-        x = x+5
+func recur(x, y){
+    ?(x > 30){
+        return x
     }
 
-    return x + 5
+    return recur(x+5, y)
 }
 
 var a = 10
 
-print(telOp(a))
+print(recur(a+10, a*2))
