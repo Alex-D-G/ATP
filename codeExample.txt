@@ -1,15 +1,25 @@
-func telOp(x){
-    checkpoint one
 
-    ?(x < 30){
-        print(x)
-        x = x+5
-        >>> one
+func odd(n){
+    ?(n==0){
+        return 0
     }
-
-    return x
+    return even(n-1)
 }
 
-var a = 10
+func even(n){
+    ?(n==0){
+        return 1
+    }
+    return odd(n-1)
+}
 
-print(telOp(a))
+func sommig(n){
+    var result = 0
+    checkpoint one
+    ?(n >= 1){
+        result = result + n
+        n = n - 1
+        >>> one
+    }
+    return result
+}

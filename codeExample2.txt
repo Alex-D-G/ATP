@@ -1,11 +1,9 @@
-func recur(x, y){
-    ?(x > 30){
-        return x
+func doubleIt(x){
+    ?(x == 5){
+        print(101)
+        return 0
     }
-
-    return recur(x+5, y)
+    print(999)
+    return 1
 }
 
-var a = 10
-
-print(recur(a+10, a*2))

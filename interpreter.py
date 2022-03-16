@@ -4,15 +4,17 @@ from typing import Union, Callable, Tuple
 # =============== LEXER =====================
 
 
-def return_numbers(text: str, index: int) -> str:
-    if not index == len(text) and text[index].isdigit():
-        return text[index] + return_numbers(text, index+1)
-    return ''
+def checkNumber(char: str) -> bool:
+    return char.isdigit()
 
 
-def return_chars(text: str, index: int) -> str:
-    if not index == len(text) and (text[index].isdigit() or text[index].isalpha()):
-        return text[index] + return_chars(text, index+1)
+def checkWord(char: str) -> bool:
+    return char.isalpha()
+
+
+def getExtension(func: Callable[[str], bool], codeText: str, index: int):
+    if index != len(codeText) and func(codeText[index]):
+        return codeText[index] + getExtension(func, codeText, index+1)
     return ''
 
 
@@ -22,11 +24,11 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
     else:
         tmp_token = codeText[index]
         if tmp_token.isdigit():
-            number = tmp_token + return_numbers(codeText, index+1)
+            number = tmp_token + getExtension(checkNumber, codeText, index + 1)
             return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
 
         elif tmp_token.isalpha():
-            word = tmp_token + return_chars(codeText, index+1)
+            word = tmp_token + getExtension(checkWord, codeText, index + 1)
             if word in KEYWORDS:
                 return getTokens(codeText, index + len(word), lineNumber, result + [Token(KEYWORD, word)])
             return getTokens(codeText, index + len(word), lineNumber, result + [Token(NAME, word)])
@@ -40,10 +42,12 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
             if (tmp_token + codeText[index+1] + codeText[index+2]) == '>>>':
                 return getTokens(codeText, index + 3, lineNumber, result + [Token(GO_TO, '>>>')])
             elif (tmp_token + codeText[index+1]) == '>=':
-                return getTokens(codeText, index + 2, lineNumber, result + [Token(IS_EQUAL_TO, '>=')])
+                return getTokens(codeText, index + 2, lineNumber, result + [Token(GREATER_OR_EQUAL_TO, '>=')])
             return getTokens(codeText, index + 1, lineNumber, result + [Token(GREATER_THAN, tmp_token)])
 
         elif tmp_token == '<':
+            if (tmp_token + codeText[index+1]) == '<=':
+                return getTokens(codeText, index + 2, lineNumber, result + [Token(LESSER_OR_EQUAL_TO, '<=')])
             return getTokens(codeText, index + 1, lineNumber, result + [Token(LESSER_THAN, tmp_token)])
 
         elif tmp_token == '(':
@@ -65,10 +69,10 @@ def getTokens(codeText: str, index: int, lineNumber: int, result: list) -> list:
 
         elif tmp_token == '-':
             if len(result) == 0:
-                number = tmp_token + return_numbers(codeText, index + 1)
+                number = tmp_token + getExtension(checkNumber, codeText, index + 1)
                 return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
             elif result[-1].type in [MINUS, PLUS, MULTIPLY, OPEN_BRACKET]:
-                number = tmp_token + return_numbers(codeText, index + 1)
+                number = tmp_token + getExtension(checkNumber, codeText, index + 1)
                 return getTokens(codeText, index + len(number), lineNumber, result + [Token(NUMBER, number)])
 
             return getTokens(codeText, index + 1, lineNumber, result + [Token(MINUS, tmp_token)])
@@ -105,11 +109,11 @@ def removeTargetFromList(varList: list, varName: str, index: int, newVarList: li
     return removeTargetFromList(varList, varName, index + 1, newVarList + [varList[index]])
 
 
-def removeTargetListFromList(targetList: list, varList: list, index: int) -> list:
+def removeTargetListFromList(func: Callable[[list, str, int, list], list], targetList: list, varList: list, index: int) -> list:
     if index == len(targetList):
         return varList
-    newList = removeTargetFromList(varList, targetList[index], 0, [])
-    return removeTargetListFromList(targetList, newList, index+1)
+    newList = func(varList, targetList[index], 0, [])
+    return removeTargetListFromList(func, targetList, newList, index+1)
 
 
 def getVarsFromTokens(tokens: list, index: int, varList: list) -> list:
@@ -293,10 +297,13 @@ def expression(tokens: list, index: int, varList: list, funcList: list) -> Tuple
 
 
 def comparison(tokens: list, index: int, varList: list, funcList: list) -> Tuple[Node, int]:
-    return operation(factor, [LESSER_THAN, GREATER_THAN], tokens, index, varList, funcList)
+    return operation(factor, [LESSER_THAN, GREATER_THAN, GREATER_OR_EQUAL_TO, LESSER_OR_EQUAL_TO, IS_EQUAL_TO],
+                     tokens, index, varList, funcList)
 
 
-def operationSearch(func: Callable, operators: list, tokens: list, index: int, left_node: Node, varList: list, funcList: list) -> Tuple[Node, int]:
+def operationSearch(func: Callable[[list, int, list, list], Tuple[Node, int]], operators: list, tokens: list,
+                    index: int, left_node: Node, varList: list, funcList: list) -> Tuple[Node, int]:
+
     if len(tokens) <= index:
         return left_node, index
     elif tokens[index].type not in operators:
@@ -308,7 +315,9 @@ def operationSearch(func: Callable, operators: list, tokens: list, index: int, l
     return operationSearch(func, operators, tokens, new_index, OpNode(left_node, operator_token, right_node), varList, funcList)
 
 
-def operation(func: Callable, operators: list, tokens: list, index: int, varList: list, funcList: list) -> Tuple[Node, int]:
+def operation(func: Callable[[list, int, list, list], Tuple[Node, int]], operators: list,
+              tokens: list, index: int, varList: list, funcList: list) -> Tuple[Node, int]:
+
     left, new_index = func(tokens, index, varList, funcList)
 
     return operationSearch(func, operators, tokens, new_index, left, varList, funcList)
@@ -371,10 +380,10 @@ class TreeInterpreter:
         method = getattr(self, method_name, self.no_visit_method)
         return method(node, varList, funcList, checkpointList, codeList)
 
+    # @staticmethod
     def visit_FuncCreateNode(self, funcNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         return FuncReturn(funcNode.name, funcNode.varList)
 
-    # @staticmethod
     def visit_FuncCallNode(self, funcNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
         funcNames = getListNames(funcList, 0, [])
         if funcNode.name in funcNames:
@@ -382,12 +391,13 @@ class TreeInterpreter:
             target_func = funcList[funcNames.index(funcNode.name)]
             if len(funcNode.varList) == len(target_func.varList):
                 new_vars = self.visit_list(funcNode.varList, 0, [], varList, funcList, checkpointList, codeList)
+
                 funcVarList = assignFunctionVariables(varList, target_func.varList, new_vars, 0, [])
 
-                newVarList = removeTargetListFromList(varList, funcVarList, 0)
-                value, newVars = run_code(codeList, target_func.start + 1, newVarList, funcList, checkpointList, target_func.end)
+                newVarList = removeTargetListFromList(removeTargetFromList, varList, funcVarList, 0)
+                return_value, newVars, newFuncList, newCheckpointList = run_code(codeList, target_func.start + 1, newVarList, funcList, checkpointList, target_func.end)
 
-                return IntReturn(value)
+                return IntReturn(return_value.value)
             raise Exception("Incorrect variable amount")
 
     def visit_PrintNode(self, printNode: Node, varList: list, funcList: list, checkpointList: list, codeList: list) -> ReturnType:
@@ -436,6 +446,12 @@ class TreeInterpreter:
             return IntReturn(left.value > right.value)
         elif opNode.operator.type == LESSER_THAN:
             return IntReturn(left.value < right.value)
+        elif opNode.operator.type == GREATER_OR_EQUAL_TO:
+            return IntReturn(left.value >= right.value)
+        elif opNode.operator.type == LESSER_OR_EQUAL_TO:
+            return IntReturn(left.value <= right.value)
+        elif opNode.operator.type == IS_EQUAL_TO:
+            return IntReturn(left.value == right.value)
 
 # =============== CONTROLLER =====================
 
@@ -474,14 +490,14 @@ class Checkpoint(NamedTuple):
     line: int
 
 
-def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, checkpointList: list, endOfContext: int) -> Tuple[int, list]:
+def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, checkpointList: list, endOfContext: int) -> Tuple[ReturnType, list, list, list]:
     if len(codeList) == lineNumber:
-        return 1, varList  # Temporary
+        return IntReturn(0), varList, funcList, checkpointList
     elif codeList[lineNumber] == '\n':
         return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext)
     elif endOfContext:
         if endOfContext-1 == lineNumber:
-            return 0, varList
+            return IntReturn(0), varList, funcList, checkpointList
 
     # Lexer
     tokens = getTokens(codeList[lineNumber], 0, 1, [])
@@ -511,9 +527,9 @@ def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, che
     elif type(inter_result) == IfReturn:
         contextEnd = findEndOfContext(codeList, 0, lineNumber + 1, 1, 0)
         if inter_result.value:
-            value, newVars = run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, contextEnd)
-            if value > 0:
-                return value, varList
+            return_value, newVars, newFuncList, newCheckpointList = run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, contextEnd)
+            if type(return_value) == ReturnReturn:
+                return return_value, varList, funcList, checkpointList
             return run_code(codeList, contextEnd, removeUniqueVars(varList, newVars, 0, []), funcList, checkpointList, endOfContext)
         return run_code(codeList, contextEnd, varList, funcList, checkpointList, endOfContext)
 
@@ -531,6 +547,22 @@ def run_code(codeList: list, lineNumber: int, varList: list, funcList: list, che
         return run_code(codeList, inter_result.value + 1, varList, funcList, checkpointList, endOfContext)
 
     elif type(inter_result) == ReturnReturn:
-        return inter_result.value, varList
+        return ReturnReturn(inter_result.value), varList, funcList, checkpointList
 
     return run_code(codeList, lineNumber+1, varList, funcList, checkpointList, endOfContext)
+
+
+def runFunc(codeList: list, funcName: str, funcVarList: list) -> int:
+    emptyValue, varList, funcList, checkpointList = run_code(codeList, 0, [], [], [], 0)
+
+    funcNames = getListNames(funcList, 0, [])
+    if funcName in funcNames:
+        targetFunc = funcList[funcNames.index(funcName)]
+
+        funcVars = assignFunctionVariables(varList, targetFunc.varList, funcVarList, 0, [])
+
+        result, newVarList, newFuncList, newCheckpointList = \
+            run_code(codeList, targetFunc.start + 1, funcVars, funcList, checkpointList, targetFunc.end)
+
+        return result.value
+    return 0
