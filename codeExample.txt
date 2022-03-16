@@ -13,8 +13,9 @@ func even(n){
     return odd(n-1)
 }
 
-func sommig(n){
+func sommig(n, x){
     var result = 0
+
     checkpoint one
     ?(n >= 1){
         result = result + n

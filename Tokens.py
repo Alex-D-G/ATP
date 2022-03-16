@@ -26,7 +26,6 @@ KEYWORDS = [  # Keywords that the language supports
     'var',
     'func',
     'checkpoint',
-    'print',
     'return'
 ]
 
