@@ -1,9 +1,0 @@
-func doubleIt(x){
-    ?(x == 5){
-        print(101)
-        return 0
-    }
-    print(999)
-    return 1
-}
-
