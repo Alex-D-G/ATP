@@ -124,6 +124,22 @@ def getListNames(varList: List[A], index: int, results: List[str]) -> List[str]:
     return getListNames(varList, index + 1, results + [varList[index].name])
 
 
+# Function that used to decorate getListNames in order for it to check if a given name is in the list
+def getListNamesDecorator(func: Callable[[List[A], int, List[str]], List[str]]):
+    index = 0
+    results = []
+
+    def inner(varList: List[A], name: str) -> bool:
+        nameList = func(varList, index, results)
+        return name in nameList
+
+    return inner
+
+
+# This function checks if a given name is in a given list
+checkIfNameInList = getListNamesDecorator(getListNames)
+
+
 # This functions removes a given var name from a varList
 def removeTargetFromList(varList: List[A], varName: str, index: int, newVarList: List[A]) -> List[A]:
     if index == len(varList):
@@ -259,9 +275,8 @@ def NodeCreation(tokens: List[Token], index: int, varList: List[A], funcList: Li
                 return IfNode(New_node), new_index + 1
 
     elif tokens[index].type == NAME:
-        varNames = getListNames(varList, 0, [])
         # Check if the name is a variable
-        if tokens[index].value in varNames:
+        if checkIfNameInList(varList, tokens[index].value):
             if index + 1 != len(tokens):
                 # Check if its assigning a new value to the variable, if not create a var call
                 if tokens[index + 1].type == EQUAL:
@@ -271,8 +286,7 @@ def NodeCreation(tokens: List[Token], index: int, varList: List[A], funcList: Li
             return TokenNode(tokens[index]), index + 1  # Var call
 
         # Check if  the name is a function
-        funcNames = getListNames(funcList, 0, [])
-        if tokens[index].value in funcNames:
+        if checkIfNameInList(funcList, tokens[index].value):
             # Check if syntax is correct
             if tokens[index + 1].type == OPEN_BRACKET:
                 # Gather all nodes between the brackets
@@ -454,7 +468,7 @@ class TreeInterpreter:
 
         funcNames = getListNames(funcList, 0, [])
         # If the called function exists, call it:
-        if funcNode.name in funcNames:
+        if checkIfNameInList(funcList, funcNode.name):
             target_func = funcList[funcNames.index(str(funcNode.name))]
             # Check if the correct number of variables is provided
             if len(funcNode.varList) == len(target_func.varList):
@@ -487,7 +501,7 @@ class TreeInterpreter:
 
         checkpointNames = getListNames(checkpointList, 0, [])
         # Check if the goTo's target exists, if so return its line number
-        if goToNode.name in checkpointNames:
+        if checkIfNameInList(checkpointList, goToNode.name):
             return GoToReturn(checkpointList[checkpointNames.index(str(goToNode.name))].line)
 
     # This function returns the outcome of an if statement
@@ -520,7 +534,7 @@ class TreeInterpreter:
         if tokenNode.tok.type == NAME:
             varNames = getListNames(varList, 0, [])
             # Check if the variable exists
-            if tokenNode.tok.value in varNames:
+            if checkIfNameInList(varList, tokenNode.tok.value):
                 return IntReturn(varList[varNames.index(tokenNode.tok.value)].value)
         return IntReturn(int(tokenNode.tok.value))
 
@@ -635,9 +649,8 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
 
     # Check if the interpreter returned a variable
     elif type(inter_result) == VarReturn:
-        varNames = getListNames(varList, 0, [])
         # Check if the variable already exists, if so replace it, if not add it to varList
-        if inter_result.name in varNames:
+        if checkIfNameInList(varList, inter_result.name):
             new_varList = removeTargetFromList(varList, inter_result.name, 0, [])
             return run_code(codeList, lineNumber + 1, new_varList + [inter_result],
                             funcList, checkpointList, endOfContext)
@@ -662,9 +675,8 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
 
     # Check if the interpreter returned a checkpoint statement
     elif type(inter_result) == CheckpointReturn:
-        checkpointNames = getListNames(checkpointList, 0, [])
         # Check if the checkpoint already exists, if so replace it
-        if inter_result.value in checkpointNames:
+        if checkIfNameInList(checkpointList, str(inter_result.value)):
             newCheckpointList = removeTargetFromList(checkpointList, str(inter_result.value), 0, [])
             newCheckpoint = Checkpoint(inter_result.value, lineNumber)
             return run_code(codeList, lineNumber + 1, varList, funcList,
@@ -694,7 +706,7 @@ def runFunc(codeList: List[str], funcName: str, funcVarList: List[A]) -> int:
 
     funcNames = getListNames(funcList, 0, [])
     # Check if the called function exists
-    if funcName in funcNames:
+    if checkIfNameInList(funcList, funcName):
         # Get the called function from the function list
         targetFunc = funcList[funcNames.index(funcName)]
 
