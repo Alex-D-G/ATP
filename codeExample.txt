@@ -27,3 +27,10 @@ func sommig(n){
     }
     return result
 }
+
+func greaterThenFifty(n){
+    ?(n > 50){
+        return 1
+    }
+    return 0
+}
