@@ -3,6 +3,7 @@
 extern "C" int odd(int s);
 extern "C" int even(int s);
 extern "C" int sommig(int s);
+extern "C" int greaterThenFifty(int s);
 
 
 extern "C" void runTestcases(){
@@ -28,6 +29,14 @@ extern "C" void runTestcases(){
    }
    else{
       hwlib::cout << "sommig() works incorrectly \n";
+   }
+
+   // Testcase for greaterThenFifty()
+   if(greaterThenFifty(20) == 0 && greaterThenFifty(49) == 0 && greaterThenFifty(50) == 0 && greaterThenFifty(51) == 1){
+      hwlib::cout << "greaterThenFifty() works correctly! \n";
+   }
+   else{
+      hwlib::cout << "greaterThenFifty() works incorrectly \n";
    }
 }
 
