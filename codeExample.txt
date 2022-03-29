@@ -1,19 +1,22 @@
-
 func odd(n){
     ?(n==0){
         return 0
     }
-    return even(n-1)
+    n = n -1
+    n = even(n)
+    return n
 }
 
 func even(n){
     ?(n==0){
         return 1
     }
-    return odd(n-1)
+    n = n -1
+    n = odd(n)
+    return n
 }
 
-func sommig(n, x){
+func sommig(n){
     var result = 0
 
     checkpoint one

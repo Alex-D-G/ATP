@@ -1,0 +1,7 @@
+run:
+	./python/python3 main.py
+	make run
+
+clean:
+	rm -f *.asm
+	make clean
