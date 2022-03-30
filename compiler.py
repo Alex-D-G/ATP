@@ -629,6 +629,14 @@ def addTabs(inputStr: str, index: int, outputStr: str) -> str:
     return addTabs(inputStr, index + 1, outputStr + inputStr[index])
 
 
+def removeTabs(inputStr: str, index: int, outputStr: str) -> str:
+    if index == len(inputStr) or inputStr[index] != " ":
+        return outputStr + inputStr[index:]
+    if inputStr[index] == " ":
+        return removeTabs(inputStr, index+1, outputStr)
+    return removeTabs(inputStr, index+1, outputStr+inputStr[index])
+
+
 # This function creates a str containing the asm instructions for storing the provided var list
 def storeVarlist(varList: List[A], index: int, result: str, newVarlist: List[A]) -> Tuple[str, List[A]]:
     if index == len(varList):
@@ -721,7 +729,7 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
     # Check if the end of the file is reached
     if len(codeList) == lineNumber:
         introText = createIntroText(funcList, 0, "")
-        f = open("demofile.txt", "w")
+        f = open("demofile.asm", "w")
         f.write(introText+outputStr)
         f.close()
         # Return 0, meaning there was no return found
@@ -736,14 +744,18 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
         return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, outputStr,
                         funcCallInFunc, multipleReturns)
 
+    # Add a comment to the .asm file explaining what line the code translates to
+    CommentedOutputStr = outputStr + "// " + removeTabs(codeList[lineNumber], 0, "")
+
     # Call the Lexer
     tokens = getTokens(codeList[lineNumber], 0, [])
     if tokens[0].type == CLOSE_C_BRACKET:
-        return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, outputStr,
+        return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, CommentedOutputStr,
                         funcCallInFunc, multipleReturns)
 
     # Call the Parser
     token_tree = parseTokens(tokens, 0, varList, funcList)
+
     # Create the Compiler class
     compiler = Compiler()
     # Call the Compiler
@@ -768,23 +780,23 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
                            "   add   r7, sp, #0\n" \
                            "   sub   sp, #" + str(len(newVars) * 4) + "\n"
             if additionalStr == "":  # If there is no if statement
-                newOutputStr = outputStr + str_result + "\n" + makeSpaceStr + storedVarStr + \
+                newOutputStr = CommentedOutputStr + str_result + "\n" + makeSpaceStr + storedVarStr + \
                                addTabs(returnedStr, 0, "") + "\n\n"
                 return run_code(codeList, contextEnd, newFuncVars, funcList + [new_func], checkpointList, endOfContext,
                                 newOutputStr, funcCallInFunc, multipleReturns)
 
-            newOutputStr = outputStr + str_result + "\n" + makeSpaceStr + storedVarStr + \
+            newOutputStr = CommentedOutputStr + str_result + "\n" + makeSpaceStr + storedVarStr + \
                            addTabs(returnedStr, 0, "") + "\n\n" + additionalStr + "\n"
             return run_code(codeList, contextEnd, newFuncVars, funcList + [new_func], checkpointList, endOfContext,
                             newOutputStr, funcCallInFunc, multipleReturns)
 
         makeSpaceStr = "   sub   sp, #" + str(len(newVars) * 4) + "\n"
         if additionalStr == "":  # If there is no if statement
-            newOutputStr = outputStr + str_result + "\n" + makeSpaceStr + storedVarStr + addTabs(returnedStr, 0, "")
+            newOutputStr = CommentedOutputStr + str_result + "\n" + makeSpaceStr + storedVarStr + addTabs(returnedStr, 0, "")
             return run_code(codeList, contextEnd, newFuncVars, funcList + [new_func], checkpointList, endOfContext,
                             newOutputStr + "\n\n", funcCallInFunc, multipleReturns)
 
-        newOutputStr = outputStr + str_result + "\n" + makeSpaceStr + storedVarStr + addTabs(returnedStr, 0, "") +\
+        newOutputStr = CommentedOutputStr + str_result + "\n" + makeSpaceStr + storedVarStr + addTabs(returnedStr, 0, "") +\
                        "\n\n" + additionalStr + "\n"
         return run_code(codeList, contextEnd, newFuncVars, funcList + [new_func], checkpointList, endOfContext,
                         newOutputStr, funcCallInFunc, multipleReturns)
@@ -802,23 +814,23 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
         if compile_result.value == LESSER_THAN:
             branchCompare = "blt   .LBB" + str(len(funcList)) + "_1\n" \
                             "b     .LBB" + str(len(funcList)) + "_2"
-            return IntReturn(0), varList, funcList, checkpointList, outputStr+str_result+branchCompare, branches
+            return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr+str_result+branchCompare, branches
         elif compile_result.value == GREATER_THAN:
             branchCompare = "bgt   .LBB" + str(len(funcList)) + "_1\n" \
                             "b     .LBB" + str(len(funcList)) + "_2"
-            return IntReturn(0), varList, funcList, checkpointList, outputStr+str_result+branchCompare, branches
+            return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr+str_result+branchCompare, branches
         elif compile_result.value == IS_EQUAL_TO:
             branchCompare = "beq   .LBB" + str(len(funcList)) + "_1\n" \
                             "b     .LBB" + str(len(funcList)) + "_2"
-            return IntReturn(0), varList, funcList, checkpointList, outputStr+str_result+branchCompare, branches
+            return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr+str_result+branchCompare, branches
         elif compile_result.value == GREATER_OR_EQUAL_TO:
             branchCompare = "bge   .LBB" + str(len(funcList)) + "_1\n" \
                             "b     .LBB" + str(len(funcList)) + "_2"
-            return IntReturn(0), varList, funcList, checkpointList, outputStr+str_result+branchCompare, branches
+            return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr+str_result+branchCompare, branches
         elif compile_result.value == LESSER_OR_EQUAL_TO:
             branchCompare = "ble   .LBB" + str(len(funcList)) + "_1\n" \
                             "b     .LBB" + str(len(funcList)) + "_2"
-            return IntReturn(0), varList, funcList, checkpointList, outputStr+str_result+branchCompare, branches
+            return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr+str_result+branchCompare, branches
 
     elif type(compile_result) == CheckpointReturn:  # If a checkpoint is returned, compile the contents
 
@@ -828,7 +840,7 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
 
         checkpointStr = str_result + ":\n" + addTabs(returnStr, 0, "") + "\n\n" + additionalStr
 
-        return IntReturn(0), varList, funcList, checkpointList, outputStr + "b     " + str_result, checkpointStr
+        return IntReturn(0), varList, funcList, checkpointList, CommentedOutputStr + "b     " + str_result, checkpointStr
 
     elif type(compile_result) == VarReturn:
 
@@ -838,18 +850,18 @@ def run_code(codeList: List[str], lineNumber: int, varList: List[A], funcList: L
             storeLocation = varList[varNames.index(compile_result.name)].location
             if storeLocation == '0':
                 storeStr = "str   r0, [sp]\n"
-                return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, outputStr +
+                return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, CommentedOutputStr +
                                 str_result + "\n" + storeStr, funcCallInFunc, multipleReturns)
 
             storeStr = "str   r0, [sp, #" + storeLocation + "]\n"
-            return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, outputStr +
+            return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, CommentedOutputStr +
                             str_result + "\n" + storeStr, funcCallInFunc, multipleReturns)
 
         assignStr = "str   r0, [sp, #" + str(len(varList)*4) + "]\n"
-        newOutputStr = outputStr + str_result + "\n" + assignStr
+        newOutputStr = CommentedOutputStr + str_result + "\n" + assignStr
 
         return run_code(codeList, lineNumber + 1, varList + [Variable(compile_result.name, str(len(varList)*4))],
                         funcList, checkpointList, endOfContext, newOutputStr, funcCallInFunc, multipleReturns)
 
-    return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, outputStr + str_result +
+    return run_code(codeList, lineNumber + 1, varList, funcList, checkpointList, endOfContext, CommentedOutputStr + str_result +
                     "\n", funcCallInFunc, multipleReturns)
