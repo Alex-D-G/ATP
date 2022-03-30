@@ -93,3 +93,8 @@ This Makefile compiles the Checkpoint code, after doing this it runs another mak
 While the python code is library free the c++ code requires hwlib in order to function. <br>
 Additionally the c++ Makefile requires other Makefiles to be present. <br>
 It is assumed that the user is working within a hwlib enviroment and thus has the other Makefiles present. <br>
+
+##### Could have's:
+Besides the standard functionality of the assignment the compiler also generates commenets detailing what the .asm code translates too. <br>
+The comments present the given input code above the translated .asm code which makes it easy to see what the .asm code means. <br> 
+
